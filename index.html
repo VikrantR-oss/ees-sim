@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101923">
+  <title>LiDAR Obstacle Avoidance — ROS 2 Robot Simulation</title>
+  <style>
+    :root { color-scheme: dark; --bg:#101923; --panel:#17232f; --line:#2a3a49; --text:#e7eef5; --muted:#9aabba; --cyan:#42d6cf; --amber:#ffbd66; --red:#ff6f78; }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; background:radial-gradient(ellipse at 50% -20%,#213748 0%,var(--bg) 55%); color:var(--text); font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif }
+    main { width:min(1240px,100%); margin:auto; padding:28px 22px 36px }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:20px }
+    h1 { margin:0; font-size:clamp(23px,3vw,34px); letter-spacing:-.035em; line-height:1.18 }
+    .subtitle { color:var(--muted); margin:8px 0 0 }
+    .badge { border:1px solid #286660; color:#8af1e7; border-radius:999px; padding:6px 11px; white-space:nowrap; font-size:12px; font-weight:700; letter-spacing:.06em }
+    .layout { display:grid; grid-template-columns:minmax(0,1fr) 295px; gap:16px; align-items:start }
+    .card { background:linear-gradient(145deg,#192733,#15212c); border:1px solid var(--line); border-radius:15px; overflow:hidden; box-shadow:0 14px 36px #0002 }
+    .scene-head { padding:13px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); color:var(--muted); font-size:13px }
+    .scene-head strong { color:var(--text); font-size:14px }
+    .status { display:inline-flex; align-items:center; gap:7px }
+    .dot { width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px #42d6cf88 }
+    .dot.paused { background:var(--amber);box-shadow:none }
+    canvas { display:block;width:100%;height:auto;aspect-ratio:920/590;background:#111c25 }
+    .controls { display:flex; flex-wrap:wrap; gap:9px; padding:13px 15px; border-top:1px solid var(--line) }
+    button { border:1px solid #3a5263; background:#213442; color:var(--text); border-radius:9px; padding:9px 13px; font:600 13px system-ui; cursor:pointer; transition:background .15s,border-color .15s }
+    button:hover { background:#2b4555;border-color:#547487 }
+    button.primary { background:#12645f;border-color:#248982 }
+    button.primary:hover { background:#187770 }
+    aside { display:grid;gap:12px }
+    .panel { padding:15px }
+    h2 { font-size:14px;margin:0 0 12px;letter-spacing:.015em }
+    .metric { display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid #263744;font-variant-numeric:tabular-nums }
+    .metric:first-of-type { border-top:0;padding-top:0 }
+    .label { color:var(--muted);font-size:13px }
+    .value { font:600 14px ui-monospace,SFMono-Regular,Consolas,monospace;color:#dceaf3 }
+    .value.cyan {color:var(--cyan)} .value.amber {color:var(--amber)}
+    .topic { border:1px solid #304450;background:#111c25;border-radius:8px;padding:9px 10px;margin-top:9px;font:12px ui-monospace,SFMono-Regular,Consolas,monospace }
+    .topic span {display:block;color:var(--muted);font:11px system-ui;margin-bottom:3px}
+    .bar { height:6px;background:#263640;border-radius:9px;overflow:hidden;margin:7px 0 3px }
+    .bar i { display:block;height:100%;width:0;background:var(--cyan);border-radius:inherit;transition:width .15s,background .15s }
+    .legend { color:var(--muted);font-size:12px;display:flex;flex-wrap:wrap;gap:12px;padding:0 16px 12px }
+    .key {display:inline-flex;align-items:center;gap:6px}.swatch{width:9px;height:9px;border-radius:50%;background:var(--cyan)}.swatch.amber{background:var(--amber)}.swatch.red{background:var(--red)}
+    .note {color:var(--muted);font-size:12px;margin:12px 2px 0}
+    .about {margin-top:16px;padding:17px 19px;color:#b2c1cc;font-size:13px}.about strong{color:var(--text)}
+    @media(max-width:800px){.layout{grid-template-columns:1fr}aside{grid-template-columns:repeat(2,minmax(0,1fr))}.wide{grid-column:1/-1}}
+    @media(max-width:520px){main{padding:18px 12px 26px}header{display:block}.badge{display:inline-block;margin-top:12px}aside{grid-template-columns:1fr}.wide{grid-column:auto}.scene-head{font-size:12px}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>LiDAR Obstacle Avoidance</h1><p class="subtitle">Reactive navigation for a differential-drive robot · ROS 2 concepts, browser simulation</p></div>
+    <div class="badge">SIMULATION · NO ROS REQUIRED</div>
+  </header>
+  <div class="layout">
+    <section class="card" aria-label="Robot simulation arena">
+      <div class="scene-head"><strong>Robot arena</strong><span class="status"><i id="statusDot" class="dot"></i><span id="statusText">Running</span></span></div>
+      <canvas id="scene" width="920" height="590" aria-label="Top-down arena showing a robot, obstacles, and LiDAR rays"></canvas>
+      <div class="legend"><span class="key"><i class="swatch"></i> LiDAR scan</span><span class="key"><i class="swatch amber"></i> Nearby return</span><span class="key"><i class="swatch red"></i> Obstacle</span></div>
+      <div class="controls"><button id="toggle" class="primary" type="button">Pause</button><button id="reset" type="button">Reset simulation</button><button id="add" type="button">Add obstacle</button></div>
+    </section>
+    <aside>
+      <section class="card panel"><h2>Robot state</h2>
+        <div class="metric"><span class="label">Linear velocity</span><span class="value cyan" id="linear">0.00 m/s</span></div>
+        <div class="metric"><span class="label">Angular velocity</span><span class="value cyan" id="angular">0.00 rad/s</span></div>
+        <div class="metric"><span class="label">Nearest front obstacle</span><span class="value amber" id="front">— m</span></div>
+        <div class="metric"><span class="label">Mode</span><span class="value" id="mode">CRUISE</span></div>
+        <div class="metric"><span class="label">Collisions</span><span class="value" id="collisions">0</span></div>
+      </section>
+      <section class="card panel"><h2>ROS 2 topic monitor</h2>
+        <div class="topic"><span>Sensor input · simulated LaserScan</span>/scan</div>
+        <div class="metric"><span class="label">Samples / scan</span><span class="value" id="samples">181</span></div>
+        <div class="metric"><span class="label">Scan range</span><span class="value">5.00 m</span></div>
+        <div class="topic"><span>Controller output · geometry_msgs/Twist</span>/cmd_vel</div>
+        <div class="metric"><span class="label">Forward clearance</span><span class="value" id="clearance">— m</span></div>
+        <div class="bar"><i id="clearbar"></i></div>
+      </section>
+      <section class="card panel wide"><h2>Controller logic</h2>
+        <div class="metric"><span class="label">Clear path</span><span class="value">Drive forward</span></div>
+        <div class="metric"><span class="label">Blocked path</span><span class="value">Turn to open side</span></div>
+        <p class="note">The simulated controller reads a forward LiDAR sector and left/right clearances, then publishes bounded linear and angular speeds.</p>
+      </section>
+    </aside>
+  </div>
+  <section class="card about"><strong>How to use:</strong> Start the simulation, watch the scan rays react to obstacles, and use <em>Add obstacle</em> to change the route. This is a self-contained 2D educational model; it visualizes the ROS 2 <code>/scan</code> → controller → <code>/cmd_vel</code> flow but does not connect to a live ROS graph or Gazebo.</section>
+</main>
+<script>
+(() => {
+  'use strict';
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const W = canvas.width, H = canvas.height, SCALE = 80, RANGE = 5;
+  const robot = { x: 115, y: 295, heading: 0, radius: 17 };
+  const initial = [
+    {x:315,y:290,r:32},{x:440,y:170,r:27},{x:455,y:420,r:38},
+    {x:590,y:292,r:34},{x:690,y:155,r:25},{x:735,y:425,r:32},{x:820,y:285,r:28}
+  ];
+  let obstacles = [], running = true, linear = 0, angular = 0, collisions = 0, last = 0, scan = [];
+  const el = id => document.getElementById(id);
+  function reset() { obstacles = initial.map(o => ({...o})); robot.x=115;robot.y=295;robot.heading=0;linear=0;angular=0;collisions=0;running=true;el('toggle').textContent='Pause';el('statusText').textContent='Running';el('statusDot').classList.remove('paused'); }
+  function rangeAt(a) {
+    const dx=Math.cos(a),dy=Math.sin(a); let best=RANGE*SCALE;
+    // Arena walls are LiDAR returns too.
+    if(dx>1e-8) best=Math.min(best,(W-24-robot.x)/dx);
+    if(dx< -1e-8) best=Math.min(best,(24-robot.x)/dx);
+    if(dy>1e-8) best=Math.min(best,(H-24-robot.y)/dy);
+    if(dy< -1e-8) best=Math.min(best,(24-robot.y)/dy);
+    for(const o of obstacles){const ox=robot.x-o.x,oy=robot.y-o.y,b=ox*dx+oy*dy,c=ox*ox+oy*oy-o.r*o.r,d=b*b-c;if(d>=0){const t=-b-Math.sqrt(d);if(t>=0)best=Math.min(best,t);}}
+    return Math.max(0,best);
+  }
+  function getScan(){const out=[];for(let i=0;i<=180;i++){const a=robot.heading-Math.PI+i*Math.PI/90;out.push({a,d:rangeAt(a)});}return out;}
+  function sectorMin(scan,lo,hi){let m=RANGE*SCALE;for(const p of scan){let rel=Math.atan2(Math.sin(p.a-robot.heading),Math.cos(p.a-robot.heading));if(rel>=lo&&rel<=hi)m=Math.min(m,p.d);}return m;}
+  function control(dt){scan=getScan();const front=sectorMin(scan,-.35,.35),left=sectorMin(scan,.55,1.75),right=sectorMin(scan,-1.75,-.55);const stop=robot.radius+25,turn=robot.radius+62;let v=0,w=0,mode='CRUISE';
+    if(front<turn){mode='AVOID';const side=left>=right?1:-1;w=side*Math.min(1.45,.75+(turn-front)/55);v=front<stop?0:Math.min(.22,.22*(front-stop)/(turn-stop));}
+    else {v=Math.min(.78,.2+(front-turn)/280);const balance=Math.max(-1,Math.min(1,(left-right)/(SCALE*2.5)));w=balance*.52;}
+    // Integrate unicycle motion; clamp the step to avoid frame stalls causing tunneling.
+    const n=Math.max(1,Math.ceil(dt/.015)),step=dt/n;
+    for(let i=0;i<n;i++){const nx=robot.x+v*SCALE*Math.cos(robot.heading)*step,ny=robot.y+v*SCALE*Math.sin(robot.heading)*step;let hit=nx<24+robot.radius||nx>W-24-robot.radius||ny<24+robot.radius||ny>H-24-robot.radius;
+      for(const o of obstacles)if(Math.hypot(nx-o.x,ny-o.y)<robot.radius+o.r)hit=true;
+      if(hit){if(v>0)collisions++;v=0;mode='BLOCKED';}else{robot.x=nx;robot.y=ny;}robot.heading=(robot.heading+w*step+Math.PI*3)%(Math.PI*2)-Math.PI;
+    }linear=v;angular=w;return {front,left,right,mode};
+  }
+  function draw(info){ctx.clearRect(0,0,W,H);ctx.fillStyle='#111c25';ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='#1c2b36';ctx.lineWidth=1;for(let x=40;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,24);ctx.lineTo(x,H-24);ctx.stroke();}for(let y=40;y<H;y+=40){ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(W-24,y);ctx.stroke();}
+    ctx.strokeStyle='#536574';ctx.lineWidth=2;ctx.strokeRect(24,24,W-48,H-48);
+    for(const o of obstacles){ctx.beginPath();ctx.arc(o.x+2,o.y+4,o.r,0,Math.PI*2);ctx.fillStyle='#080d12';ctx.fill();ctx.beginPath();ctx.arc(o.x,o.y,o.r,0,Math.PI*2);ctx.fillStyle='#9d4550';ctx.fill();ctx.strokeStyle='#ff7d84';ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.arc(o.x-o.r*.3,o.y-o.r*.3,o.r*.22,0,Math.PI*2);ctx.fillStyle='#d46c73';ctx.fill();}
+    if(scan.length){ctx.lineWidth=1;for(const p of scan){const near=p.d<150;ctx.strokeStyle=near?'rgba(255,189,102,.5)':'rgba(66,214,207,.22)';ctx.beginPath();ctx.moveTo(robot.x,robot.y);ctx.lineTo(robot.x+Math.cos(p.a)*p.d,robot.y+Math.sin(p.a)*p.d);ctx.stroke();if(near){ctx.beginPath();ctx.arc(robot.x+Math.cos(p.a)*p.d,robot.y+Math.sin(p.a)*p.d,1.8,0,Math.PI*2);ctx.fillStyle='#ffbd66';ctx.fill();}}}
+    ctx.save();ctx.translate(robot.x,robot.y);ctx.rotate(robot.heading);ctx.beginPath();ctx.arc(0,0,robot.radius,0,Math.PI*2);ctx.fillStyle='#167e79';ctx.fill();ctx.strokeStyle='#75f2df';ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.moveTo(5,0);ctx.lineTo(24,0);ctx.strokeStyle='#b8fff2';ctx.lineWidth=4;ctx.stroke();ctx.beginPath();ctx.arc(-4,0,4,0,Math.PI*2);ctx.fillStyle='#9df8eb';ctx.fill();ctx.restore();
+    ctx.fillStyle='#9aabba';ctx.font='12px system-ui';ctx.fillText('1 m',34,H-32);ctx.strokeStyle='#9aabba';ctx.beginPath();ctx.moveTo(34,H-45);ctx.lineTo(114,H-45);ctx.stroke();ctx.beginPath();ctx.moveTo(34,H-49);ctx.lineTo(34,H-41);ctx.moveTo(114,H-49);ctx.lineTo(114,H-41);ctx.stroke();
+    el('linear').textContent=linear.toFixed(2)+' m/s';el('angular').textContent=angular.toFixed(2)+' rad/s';el('front').textContent=(info.front/SCALE).toFixed(2)+' m';el('clearance').textContent=(info.front/SCALE).toFixed(2)+' m';el('mode').textContent=info.mode;el('collisions').textContent=String(collisions);el('clearbar').style.width=Math.max(0,Math.min(100,info.front/(RANGE*SCALE)*100))+'%';el('clearbar').style.background=info.front<150?'var(--amber)':'var(--cyan)';
+  }
+  function frame(t){const dt=last?Math.min(.05,(t-last)/1000):0;last=t;let info={front:rangeAt(robot.heading),left:0,right:0,mode:'PAUSED'};if(running)info=control(dt);else scan=getScan();draw(info);requestAnimationFrame(frame);}
+  el('toggle').addEventListener('click',()=>{running=!running;el('toggle').textContent=running?'Pause':'Resume';el('statusText').textContent=running?'Running':'Paused';el('statusDot').classList.toggle('paused',!running);});
+  el('reset').addEventListener('click',reset);
+  el('add').addEventListener('click',()=>{let x,y,tries=0;do{x=190+Math.random()*(W-240);y=55+Math.random()*(H-110);tries++;}while(tries<100&&(Math.hypot(x-robot.x,y-robot.y)<145||obstacles.some(o=>Math.hypot(x-o.x,y-o.y)<o.r+46)));if(tries<=100)obstacles.push({x,y,r:20+Math.random()*13});});
+  reset();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
